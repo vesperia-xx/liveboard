@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  background-color: #09090b;
+  color: #f4f4f5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(129, 140, 248, 0.35);
+  color: #ffffff;
+}
+
+/* Subtle page grid used behind heroes and auth screens */
+.bg-grid {
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+.bg-glow {
+  background: radial-gradient(
+    60% 50% at 50% 0%,
+    rgba(99, 102, 241, 0.35) 0%,
+    rgba(99, 102, 241, 0.08) 45%,
+    transparent 100%
+  );
+}
+
+/* Thin custom scrollbar for dark surfaces */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.7);
+  outline-offset: 2px;
+}
