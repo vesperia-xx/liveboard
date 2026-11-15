@@ -130,70 +130,98 @@ check('assignee gets notifications', notifications.status === 200 && notificatio
 check('mark notifications read', (await bob.request('/api/notifications', { method: 'PATCH' })).status === 200)
 check('unread resets', (await bob.request('/api/notifications')).body.unread === 0)
 
-// --- pusher auth endpoint ----------------------------------------------
-const pusherAuth = await anonymous.request('/api/pusher/auth', {
-  method: 'POST',
-  body: { socket_id: '1.2', channel_name: 'presence-project-x' },
-})
-check('pusher auth rejects anonymous callers', pusherAuth.status === 401)
+// --- realtime checks ------------------------------------------
+const isLocal = /localhost|127\.0\.0\.1/.test(baseUrl)
 
-// --- socket auth + presence --------------------------------------------
-function connectWithCookie(cookie) {
-  return new Promise((resolve) => {
+if (isLocal) {
+  const pusherAuth = await anonymous.request('/api/pusher/auth', {
+    method: 'POST',
+    body: { socket_id: '1.2', channel_name: 'presence-project-x' },
+  })
+  check('pusher auth rejects anonymous callers', pusherAuth.status === 401)
+
+  function connectWithCookie(cookie) {
+    return new Promise((resolve) => {
+      const socket = io(baseUrl, {
+        transports: ['websocket'],
+        extraHeaders: cookie ? { Cookie: cookie } : {},
+        reconnection: false,
+        timeout: 4000,
+      })
+      const done = (result) => {
+        socket.removeAllListeners()
+        socket.disconnect()
+        resolve(result)
+      }
+      socket.on('connect', () => done({ connected: true, socket }))
+      socket.on('connect_error', (error) => done({ connected: false, error: error.message }))
+    })
+  }
+
+  const anonSocket = await connectWithCookie('')
+  check('socket without a session is rejected', anonSocket.connected === false)
+
+  const authed = await new Promise((resolve) => {
     const socket = io(baseUrl, {
       transports: ['websocket'],
-      extraHeaders: cookie ? { Cookie: cookie } : {},
+      extraHeaders: { Cookie: alice.cookie },
       reconnection: false,
       timeout: 4000,
     })
-    const done = (result) => {
-      socket.removeAllListeners()
-      socket.disconnect()
-      resolve(result)
+    const result = { connected: false, ack: null, presence: [] }
+    const maybeResolve = () => {
+      if (result.ack && result.presence.length > 0) {
+        socket.disconnect()
+        resolve(result)
+      }
     }
-    socket.on('connect', () => done({ connected: true, socket }))
-    socket.on('connect_error', (error) => done({ connected: false, error: error.message }))
-  })
-}
-
-const anonSocket = await connectWithCookie('')
-check('socket without a session is rejected', anonSocket.connected === false)
-
-const authed = await new Promise((resolve) => {
-  const socket = io(baseUrl, {
-    transports: ['websocket'],
-    extraHeaders: { Cookie: alice.cookie },
-    reconnection: false,
-    timeout: 4000,
-  })
-  const result = { connected: false, ack: null, presence: [] }
-  const maybeResolve = () => {
-    if (result.ack && result.presence.length > 0) {
-      socket.disconnect()
-      resolve(result)
-    }
-  }
-  socket.on('presence:update', (payload) => {
-    result.presence = payload.users
-    maybeResolve()
-  })
-  socket.on('connect', () => {
-    result.connected = true
-    socket.emit('join-project', projectId, (ack) => {
-      result.ack = ack
+    socket.on('presence:update', (payload) => {
+      result.presence = payload.users
       maybeResolve()
     })
+    socket.on('connect', () => {
+      result.connected = true
+      socket.emit('join-project', projectId, (ack) => {
+        result.ack = ack
+        maybeResolve()
+      })
+    })
+    socket.on('connect_error', (error) => resolve({ connected: false, error: error.message }))
+    setTimeout(() => {
+      socket.disconnect()
+      resolve(result)
+    }, 4000)
   })
-  socket.on('connect_error', (error) => resolve({ connected: false, error: error.message }))
-  setTimeout(() => {
-    socket.disconnect()
-    resolve(result)
-  }, 4000)
-})
-check('socket with a valid session connects', authed.connected === true)
-check('join-project authorized for member', authed.ack?.ok === true)
-check('presence lists the connected user', authed.presence?.some((user) => user.name.includes('alice')))
+  check('socket with a valid session connects', authed.connected === true)
+  check('join-project authorized for member', authed.ack?.ok === true)
+  check('presence lists the connected user', authed.presence?.some((user) => user.name.includes('alice')))
+} else {
+  const anon = await anonymous.request('/api/pusher/auth', {
+    method: 'POST',
+    body: { socket_id: '1.2', channel_name: `presence-project-${projectId}` },
+  })
+  check('pusher auth rejects anonymous callers', anon.status === 401)
 
+  const member = await alice.request('/api/pusher/auth', {
+    method: 'POST',
+    body: { socket_id: '1.2', channel_name: `presence-project-${projectId}` },
+  })
+  check('pusher auth accepts a workspace member', member.status === 200 && typeof member.body?.auth === 'string')
+
+  const carol = new Client('carol')
+  await carol.auth('register', `carol.${Date.now()}@example.com`)
+  const outsider = await carol.request('/api/pusher/auth', {
+    method: 'POST',
+    body: { socket_id: '1.2', channel_name: `presence-project-${projectId}` },
+  })
+  check('pusher auth denies a non-member workspace', outsider.status === 403)
+
+  const unknown = await alice.request('/api/pusher/auth', {
+    method: 'POST',
+    body: { socket_id: '1.2', channel_name: 'presence-project-does-not-exist' },
+  })
+  check('pusher auth rejects an unknown project', unknown.status === 404)
+}
 // --- offline-friendly API semantics ------------------------------------
 check('PATCH with empty payload rejected', (await alice.request(`/api/tasks/${taskId}`, { method: 'PATCH', body: {} })).status === 400)
 check('comment cannot be blank', (await alice.request(`/api/tasks/${taskId}/comments`, { method: 'POST', body: { content: '   ' } })).status === 400)
