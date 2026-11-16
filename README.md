@@ -15,6 +15,7 @@ Collaborative project platform with a Kanban board, live presence, comments, act
 - **Notifications** — assignment, comment and invitation notifications with unread counter.
 - **Optimistic UI** — TanStack Query mutations with snapshot rollback on failure.
 - **Offline awareness** — connection banner, automatic re-sync (query invalidation) after reconnect.
+- **Shareable meta** — dynamic 1200×630 OpenGraph/Twitter card generated at build time with `next/og`.
 
 ## Stack
 
@@ -59,6 +60,7 @@ PORT=3000
 | `npm run build`     | `prisma generate && next build`          |
 | `npm run start`     | Production server (requires `NODE_ENV`)  |
 | `npm run typecheck` | `tsc --noEmit`                           |
+| `npm run smoke`     | E2E smoke test against a running server  |
 | `npm run db:push`   | Sync Prisma schema                      |
 | `npm run db:studio` | Prisma Studio                            |
 
@@ -67,10 +69,23 @@ PORT=3000
 With the server running:
 
 ```bash
-node scripts/smoke.mjs
+npm run smoke              # http://localhost:3000
+npm run smoke -- https://liveboard-chi.vercel.app
 ```
 
-Covers authentication, validation, workspace isolation (403s for outsiders), invites, task moves, assignment, comments, activity, notifications and socket authorization (36 checks).
+Covers authentication, validation, workspace isolation (403s for outsiders), invites, task moves, assignment, comments, activity, notifications and socket authorization (37 checks). In local mode it exercises Socket.io; against a deployed URL it exercises Pusher channel authorization.
+
+## CI (GitHub Actions)
+
+`.github/workflows/ci.yml` runs on every push/PR to `main`:
+
+1. `npm ci` (runs `prisma generate`)
+2. `npm run typecheck`
+3. `prisma migrate deploy` against a **throwaway Postgres service container** (fresh DB per run/PR)
+4. `npm run build`
+5. Production server (`NODE_ENV=production node server.js`) + `npm run smoke`
+
+No external secrets are needed: the database and `JWT_SECRET` are ephemeral CI values, and without `PUSHER_*` the smoke test uses the Socket.io path. Server logs are uploaded as an artifact if the job fails.
 
 ## Architecture
 

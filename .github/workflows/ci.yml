@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. force-pushes, quick follow-ups).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Throwaway Postgres: the service container is destroyed with the job, so every
+  # run (and every PR) starts from an empty, migrated database.
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/liveboard_ci?schema=public
+  JWT_SECRET: ci-secret-not-for-production
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  verify:
+    name: Typecheck · Build · Migrate · Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: liveboard_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d liveboard_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Apply migrations to the ephemeral database
+        run: npx prisma migrate deploy
+
+      - name: Build (includes prisma generate)
+        run: npm run build
+
+      - name: Start production server
+        run: |
+          NODE_ENV=production node server.js > server.log 2>&1 &
+          echo $! > server.pid
+
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/ > /dev/null; then
+              echo "Server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Server did not become ready in time"
+          tail -n 50 server.log
+          exit 1
+
+      - name: Smoke test (auth, authz, realtime, offline semantics)
+        run: npm run smoke -- http://localhost:3000
+
+      - name: Upload server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs
+          path: server.log
+          if-no-files-found: ignore
+          retention-days: 7

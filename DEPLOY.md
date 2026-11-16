@@ -50,6 +50,7 @@ git push -u origin main
 | `PUSHER_CLUSTER`              | `eu` (u otro)                                |
 | `NEXT_PUBLIC_PUSHER_KEY`      | `key` de Pusher (misma)                      |
 | `NEXT_PUBLIC_PUSHER_CLUSTER`  | `eu` (u otro)                                |
+| `NEXT_PUBLIC_APP_URL`         | URL pública, p. ej. `https://liveboard-chi.vercel.app` (para `og:image` absoluta; en Vercel se usa el dominio de producción automáticamente) |
 
 4. Click en **Deploy**.
 
@@ -72,4 +73,6 @@ Debe pasar **37/37 checks** (crea usuarios de prueba, workspace, tareas, verific
 - **Prisma en serverless**: funciona out-of-the-box con el cliente generado en el build (`postinstall: prisma generate`).
 - **Errores de conexión a Neon**: comprueba que `?sslmode=require` está en la URL y usa la connection string **pooled** bajo carga.
 - **Migraciones futuras**: `npx prisma migrate dev` local → commit del SQL generado → `prisma migrate deploy` contra Neon (o un CI/CD).
+- **Imagen OpenGraph**: `/opengraph-image` se genera en el build con `next/og` (1200×630). Valida la vista previa con [opengraph.xyz](https://www.opengraph.xyz/url/https%3A%2F%2Fliveboard-chi.vercel.app) o pegando la URL en Slack/X; si cambias `NEXT_PUBLIC_APP_URL`, haz **Redeploy**.
+- **CI**: cada push/PR a `main` ejecuta `.github/workflows/ci.yml` (typecheck → migraciones → build → smoke contra un Postgres efímero del propio runner).
 - **Dominio propio**: Vercel → Project → Settings → Domains.
