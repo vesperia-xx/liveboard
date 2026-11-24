@@ -97,6 +97,19 @@ export default function LoginPage() {
             Sign up
           </Link>
         </p>
+
+        <div className="space-y-4 border-t border-white/10 pt-6">
+          <a
+            href="/demo"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-300 transition-colors hover:border-indigo-400 hover:bg-indigo-500/20"
+          >
+            Explore the demo workspace
+            <span aria-hidden>&rarr;</span>
+          </a>
+          <p className="text-center text-xs text-zinc-500">
+            No account or password needed. Shared demo data.
+          </p>
+        </div>
       </div>
     </div>
   )
